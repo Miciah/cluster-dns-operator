@@ -5,102 +5,72 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// ClusterOperatorList is a list of OperatorStatus resources.
+// OperatorStatusList is a list of OperatorStatus resources.
 // +k8s:deepcopy-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type ClusterOperatorList struct {
+type OperatorStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 
-	Items []ClusterOperator `json:"items"`
+	Items []OperatorStatus `json:"items"`
 }
 
-// ClusterOperator is the Custom Resource object which holds the current state
+// OperatorStatus is the Custom Resource object which holds the current state
 // of an operator. This object is used by operators to convey their state to
 // the rest of the cluster.
 // +genclient
 // +k8s:deepcopy-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type ClusterOperator struct {
+type OperatorStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 
-	// Spec hold the intent of how this operator should behave.
-	Spec ClusterOperatorSpec `json:"spec"`
+	// Condition describes the state of the operator's reconciliation
+	// functionality.
+	Condition OperatorStatusCondition `json:"condition"`
 
-	// status holds the information about the state of an operator.  It is consistent with status information across
-	// the kube ecosystem.
-	Status ClusterOperatorStatus `json:"status"`
-}
-
-// ClusterOperatorSpec is empty for now, but you could imagine holding information like "pause".
-type ClusterOperatorSpec struct {
-}
-
-// ClusterOperatorStatus provides information about the status of the operator.
-// +k8s:deepcopy-gen=true
-type ClusterOperatorStatus struct {
-	// conditions describes the state of the operator's reconciliation functionality.
-	// +patchMergeKey=type
-	// +patchStrategy=merge
-	Conditions []ClusterOperatorStatusCondition `json:"conditions"`
-
-	// version indicates which version of the operator updated the current
+	// Version indicates which version of the operator updated the current
 	// status object.
 	Version string `json:"version"`
 
-	// extension contains any additional status information specific to the
+	// LasteUpdate is the time of the last update to the current status object.
+	LastUpdate metav1.Time `json:"lastUpdate"`
+
+	// Extension contains any additional status information specific to the
 	// operator which owns this status object.
-	Extension runtime.RawExtension `json:"extension,omitempty"`
+	Extension runtime.RawExtension `json:"extension"`
 }
 
-type ConditionStatus string
-
-// These are valid condition statuses. "ConditionTrue" means a resource is in the condition.
-// "ConditionFalse" means a resource is not in the condition. "ConditionUnknown" means kubernetes
-// can't decide if a resource is in the condition or not. In the future, we could add other
-// intermediate conditions, e.g. ConditionDegraded.
-const (
-	ConditionTrue    ConditionStatus = "True"
-	ConditionFalse   ConditionStatus = "False"
-	ConditionUnknown ConditionStatus = "Unknown"
-)
-
-// ClusterOperatorStatusCondition represents the state of the operator's
+// OperatorStatusCondition represents the state of the operator's
 // reconciliation functionality.
-// +k8s:deepcopy-gen=true
-type ClusterOperatorStatusCondition struct {
-	// type specifies the state of the operator's reconciliation functionality.
-	Type ClusterStatusConditionType `json:"type"`
+type OperatorStatusCondition struct {
+	// Type specifies the state of the operator's reconciliation functionality.
+	Type OperatorStatusConditionType `json:"type"`
 
-	// Status of the condition, one of True, False, Unknown.
-	Status ConditionStatus `json:"status"`
-
-	// LastTransitionTime is the time of the last update to the current status object.
-	LastTransitionTime metav1.Time `json:"lastTransitionTime"`
-
-	// reason is the reason for the condition's last transition.  Reasons are CamelCase
-	Reason string `json:"reason,omitempty"`
-
-	// message provides additional information about the current condition.
+	// Message provides any additional information about the current condition.
 	// This is only to be consumed by humans.
-	Message string `json:"message,omitempty"`
+	Message string `json:"message"`
 }
 
-// ClusterStatusConditionType is the state of the operator's reconciliation functionality.
-type ClusterStatusConditionType string
+// OperatorStatusConditionType is the state of the operator's reconciliation
+// functionality.
+type OperatorStatusConditionType string
 
 const (
-	// OperatorAvailable indicates that the binary maintained by the operator (eg: openshift-apiserver for the
-	// openshift-apiserver-operator), is functional and available in the cluster.
-	OperatorAvailable ClusterStatusConditionType = "Available"
+	// OperatorStatusConditionTypeWaiting indicates that the operator isn't
+	// running its reconciliation functionality. This may be because a
+	// dependency or other prerequisite hasn't been satisfied.
+	OperatorStatusConditionTypeWaiting OperatorStatusConditionType = "Waiting"
 
-	// OperatorProgressing indicates that the operator is actively making changes to the binary maintained by the
-	// operator (eg: openshift-apiserver for the openshift-apiserver-operator).
-	OperatorProgressing ClusterStatusConditionType = "Progressing"
+	// OperatorStatusConditionTypeWorking indicates that the operator is
+	// actively reconciling its operands.
+	OperatorStatusConditionTypeWorking OperatorStatusConditionType = "Working"
 
-	// OperatorFailing indicates that the operator has encountered an error that is preventing it from working properly.
-	// The binary maintained by the operator (eg: openshift-apiserver for the openshift-apiserver-operator) may still be
-	// available, but the user intent cannot be fulfilled.
-	OperatorFailing ClusterStatusConditionType = "Failing"
+	// OperatorStatusConditionTypeDone indicates that the operator has finished
+	// reconciling its operands and is waiting for changes.
+	OperatorStatusConditionTypeDone OperatorStatusConditionType = "Done"
+
+	// OperatorStatusConditionTypeDegraded indicates that the operator has
+	// encountered an error that is preventing it from working properly.
+	OperatorStatusConditionTypeDegraded OperatorStatusConditionType = "Degraded"
 )

@@ -36,8 +36,8 @@ func init() {
 // Adds the list of known types to api.Scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&ClusterOperator{},
-		&ClusterOperatorList{},
+		&OperatorStatus{},
+		&OperatorStatusList{},
 	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
