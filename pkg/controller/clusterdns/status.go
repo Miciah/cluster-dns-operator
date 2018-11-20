@@ -1,52 +1,52 @@
-package stub
+package clusterdns
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
-	"github.com/sirupsen/logrus"
-
+	osv1 "github.com/openshift/api/config/v1"
 	dnsv1alpha1 "github.com/openshift/cluster-dns-operator/pkg/apis/dns/v1alpha1"
 	"github.com/openshift/cluster-dns-operator/pkg/util/clusteroperator"
 	operatorversion "github.com/openshift/cluster-dns-operator/version"
-	osv1 "github.com/openshift/cluster-version-operator/pkg/apis/operatorstatus.openshift.io/v1"
-
-	"github.com/operator-framework/operator-sdk/pkg/k8sclient"
-	"github.com/operator-framework/operator-sdk/pkg/sdk"
-	"github.com/operator-framework/operator-sdk/pkg/util/k8sutil"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// TODO Make this a controller?
+
+const (
+	clusterOperatorName      = "openshift-dns"
+	clusterOperatorNamespace = "openshift-cluster-dns-operator"
 )
 
 // syncOperatorStatus computes the operator's current status and therefrom
 // creates or updates the ClusterOperator resource for the operator.
-func (h *Handler) syncOperatorStatus() {
-	co := &osv1.ClusterOperator{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ClusterOperator",
-			APIVersion: "operatorstatus.openshift.io/v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: h.Namespace,
-			// TODO Use a named constant or get name from config.
-			Name: "openshift-dns",
-		},
-	}
-	err := sdk.Get(co)
+func (r *ReconcileClusterDNS) syncOperatorStatus(namespace string) {
+	log = log.WithValues(
+		"Status.Namespace", clusterOperatorNamespace,
+		"Status.Name", clusterOperatorName,
+	)
+
+	co := &osv1.ClusterOperator{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{
+		Name:      clusterOperatorName,
+		Namespace: clusterOperatorNamespace,
+	}, co)
 	isNotFound := errors.IsNotFound(err)
 	if err != nil && !isNotFound {
-		logrus.Errorf("syncOperatorStatus: error getting ClusterOperator %s/%s: %v",
-			co.Namespace, co.Name, err)
+		log.Error(err, "syncOperatorStatus: error getting ClusterOperator")
 
 		return
 	}
 
-	ns, dnses, daemonsets, err := h.getOperatorState()
+	ns, dnses, daemonsets, err := r.getOperatorState(namespace)
 	if err != nil {
-		logrus.Errorf("syncOperatorStatus: getOperatorState: %v", err)
+		log.Error(err, "syncOperatorStatus: getOperatorState")
 
 		return
 	}
@@ -58,12 +58,10 @@ func (h *Handler) syncOperatorStatus() {
 	if isNotFound {
 		co.Status.Version = operatorversion.Version
 
-		if err := sdk.Create(co); err != nil {
-			logrus.Errorf("syncOperatorStatus: failed to create ClusterOperator %s/%s: %v",
-				co.Namespace, co.Name, err)
+		if err := r.client.Create(context.TODO(), co); err != nil {
+			log.Error(err, "syncOperatorStatus: failed to create ClusterOperator")
 		} else {
-			logrus.Infof("syncOperatorStatus: created ClusterOperator %s/%s (UID %v)",
-				co.Namespace, co.Name, co.UID)
+			log.Info("syncOperatorStatus: created ClusterOperator", "Status.UID", co.UID)
 		}
 	}
 
@@ -71,37 +69,24 @@ func (h *Handler) syncOperatorStatus() {
 		return
 	}
 
-	unstructObj, err := k8sutil.UnstructuredFromRuntimeObject(co)
-	if err != nil {
-		logrus.Errorf("syncOperatorStatus: k8sutil.UnstructuredFromRuntimeObject: %v", err)
-
-		return
-	}
-
-	resourceClient, _, err := k8sclient.GetResourceClient(co.APIVersion,
-		co.Kind, co.Namespace)
-	if err != nil {
-		logrus.Errorf("syncOperatorStatus: GetResourceClient: %v", err)
-
-		return
-	}
-
-	if _, err := resourceClient.UpdateStatus(unstructObj); err != nil {
-		logrus.Errorf("syncOperatorStatus: UpdateStatus on %s/%s: %v",
-			co.Namespace, co.Name, err)
+	if err := r.client.Status().Update(context.TODO(), co); err != nil {
+		log.Error(err, "syncOperatorStatus: error updating status")
 	}
 }
 
 // getOperatorState gets and returns the resources necessary to compute the
 // operator's current state.
-func (h *Handler) getOperatorState() (*corev1.Namespace, []dnsv1alpha1.ClusterDNS, []appsv1.DaemonSet, error) {
-	ns, err := h.ManifestFactory.DNSNamespace()
+func (r *ReconcileClusterDNS) getOperatorState(namespace string) (*corev1.Namespace, []dnsv1alpha1.ClusterDNS, []appsv1.DaemonSet, error) {
+	ns, err := r.manifestFactory.DNSNamespace()
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("error building Namespace: %v",
 			err)
 	}
 
-	if err := sdk.Get(ns); err != nil {
+	if err := r.client.Get(context.TODO(), types.NamespacedName{
+		Name:      ns.Name,
+		Namespace: ns.Namespace,
+	}, ns); err != nil {
 		if errors.IsNotFound(err) {
 			return nil, nil, nil, nil
 		}
@@ -110,28 +95,16 @@ func (h *Handler) getOperatorState() (*corev1.Namespace, []dnsv1alpha1.ClusterDN
 			"error getting Namespace %s: %v", ns.Name, err)
 	}
 
-	dnsList := &dnsv1alpha1.ClusterDNSList{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ClusterDNS",
-			APIVersion: "dns.openshift.io/v1alpha1",
-		},
-	}
-	err = sdk.List(h.Namespace, dnsList,
-		sdk.WithListOptions(&metav1.ListOptions{}))
-	if err != nil {
+	listOpts := &client.ListOptions{Namespace: namespace}
+
+	dnsList := &dnsv1alpha1.ClusterDNSList{}
+	if err := r.client.List(context.TODO(), listOpts, dnsList); err != nil {
 		return nil, nil, nil, fmt.Errorf(
 			"failed to list ClusterDNSes: %v", err)
 	}
 
-	daemonsetList := &appsv1.DaemonSetList{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "DaemonSet",
-			APIVersion: "apps/v1",
-		},
-	}
-	err = sdk.List(ns.Name, daemonsetList,
-		sdk.WithListOptions(&metav1.ListOptions{}))
-	if err != nil {
+	daemonsetList := &appsv1.DaemonSetList{}
+	if err := r.client.List(context.TODO(), listOpts, daemonsetList); err != nil {
 		return nil, nil, nil, fmt.Errorf(
 			"failed to list DaemonSets: %v", err)
 	}

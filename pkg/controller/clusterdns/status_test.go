@@ -1,11 +1,11 @@
-package stub
+package clusterdns
 
 import (
 	"fmt"
 	"testing"
 
+	osv1 "github.com/openshift/api/config/v1"
 	dnsv1alpha1 "github.com/openshift/cluster-dns-operator/pkg/apis/dns/v1alpha1"
-	osv1 "github.com/openshift/cluster-version-operator/pkg/apis/operatorstatus.openshift.io/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
