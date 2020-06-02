@@ -155,6 +155,22 @@ func TestDaemonsetConfigChanged(t *testing.T) {
 			},
 			expect: true,
 		},
+		{
+			description: "if the config-volume default mode value is defaulted",
+			mutate: func(daemonset *appsv1.DaemonSet) {
+				fourTwenty := int32(420) // = 0644 octal.
+				daemonset.Spec.Template.Spec.Volumes[1].Secret.DefaultMode = &fourTwenty
+			},
+			expect: false,
+		},
+		{
+			description: "if the config-volume default mode value changes",
+			mutate: func(daemonset *appsv1.DaemonSet) {
+				newVal := int32(0)
+				daemonset.Spec.Template.Spec.Volumes[1].Secret.DefaultMode = &newVal
+			},
+			expect: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -195,6 +211,26 @@ func TestDaemonsetConfigChanged(t *testing.T) {
 						},
 						NodeSelector: map[string]string{
 							"beta.kubernetes.io/os": "linux",
+						},
+						Volumes: []corev1.Volume{
+							{
+								Name: "config-volume",
+								VolumeSource: corev1.VolumeSource{
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name:  "dns-default",
+										},
+									},
+								},
+							},
+							{
+								Name: "metrics-tls",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: "dns-default-metrics-tls",
+									},
+								},
+							},
 						},
 					},
 				},
