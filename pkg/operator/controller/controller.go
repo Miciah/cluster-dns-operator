@@ -335,17 +335,7 @@ func (r *reconciler) ensureDNS(dns *operatorv1.DNS) error {
 
 	errs := []error{}
 
-	// In 4.6 and earlier, the node resolver runs as a container in the
-	// daemonset that ensureDNSDaemonSet manages, and if a separate node
-	// resolver daemonset exists, then ensureNodeResolverDaemonset deletes
-	// it.  We want to delete the node resolver daemonset before updating
-	// the DNS daemonset to avoid having both the node resolver running in
-	// both daemonsets at the same time.
-	if _, _, err := r.ensureNodeResolverDaemonSet(clusterIP, clusterDomain); err != nil {
-		errs = append(errs, err)
-	}
-
-	if haveDS, daemonset, err := r.ensureDNSDaemonSet(dns, clusterIP, clusterDomain); err != nil {
+	if haveDS, daemonset, err := r.ensureDNSDaemonSet(dns); err != nil {
 		errs = append(errs, fmt.Errorf("failed to ensure daemonset for dns %s: %v", dns.Name, err))
 	} else if !haveDS {
 		errs = append(errs, fmt.Errorf("failed to get daemonset for dns %s", dns.Name))
@@ -371,6 +361,15 @@ func (r *reconciler) ensureDNS(dns *operatorv1.DNS) error {
 			errs = append(errs, fmt.Errorf("failed to get service for dns %s", dns.Name))
 		} else if err := r.ensureMetricsIntegration(dns, svc, daemonsetRef); err != nil {
 			errs = append(errs, fmt.Errorf("failed to integrate metrics with openshift-monitoring for dns %s: %v", dns.Name, err))
+		}
+
+		// Create the node resolver daemonset after ensuring the DNS
+		// daemonset.
+		//
+		// TODO: Include the node resolver daemonset's status in the
+		// clusteroperator's status.
+		if _, _, err := r.ensureNodeResolverDaemonSet(clusterIP, clusterDomain); err != nil {
+			errs = append(errs, err)
 		}
 
 		if err := r.syncDNSStatus(dns, clusterIP, clusterDomain, daemonset); err != nil {

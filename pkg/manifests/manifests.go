@@ -24,6 +24,8 @@ const (
 	MetricsRoleAsset               = "assets/dns/metrics/role.yaml"
 	MetricsRoleBindingAsset        = "assets/dns/metrics/role-binding.yaml"
 
+	nodeResolverScriptAsset = "assets/dns/update-node-resolver.sh"
+
 	// OwningDNSLabel should be applied to any objects "owned by" a
 	// dns to aid in selection (especially in cases where an ownerref
 	// can't be established due to namespace boundaries).
@@ -112,6 +114,10 @@ func MetricsRoleBinding() *rbacv1.RoleBinding {
 		panic(err)
 	}
 	return rb
+}
+
+func NodeResolverScript() string {
+	return MustAssetString(nodeResolverScriptAsset)
 }
 
 func NewServiceAccount(manifest io.Reader) (*corev1.ServiceAccount, error) {
